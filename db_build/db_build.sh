@@ -1,38 +1,43 @@
-#!/bin/bash
+#!/bin/sh
 
-function usage
-{
-    echo "usage: fiadb [[[-b] [-u username] [-hf host] [-W password] [] ] | [-h]]"
+# $1: url to download
+function download {
+    local url=$1
+    echo -n "    "
+    wget --progress=dot $url 2>&1 | grep --line-buffered "%" | \
+        sed -u -e "s,\.,,g" | awk '{printf("\b\b\b\b%4s", $2)}'
+    echo -ne "\b\b\b\b"
+    echo " DONE"
 }
 
-#Parameters are set using export
-function dbcreate
-{
-	COMMAND=$(cat <<EOF
-CREATE DATABASE $DBNAME;
-CREATE SCHEMA $DBSCHEMA;
-EOF
-)
-	psql -d $DBNAME -U $USERNAME -h $DBHOST -p $PORT -a -w -c $COMMAND
-	psql_exit_status = $?
-
-	if [ $psql_exit_status != 0 ]; then
-		echo "psql failed while trying to create database and schema" 1>&2
-		exit $psql_exit_status
-	fi
+# No parameters needed
+function usage {
+    echo "usage: fiadb coming soon"
 }
 
-#1 parameter needs to be passed in containing the file name
-function dbfile
-{
+# $1: parameter needs to be passed for command
+function dbcommand {
+	psql -h $DBHOST -p $PORT -d $DBNAME -U $USERNAME -w -E -q -c $1
+}
+
+# Parameters are set using export
+function dbcreate {
+	# part of psql
+	createdb -h $DBHOST -p $PORT -U $USERNAME -E UTF8 -w $DBNAME
+	
+	dbcommand "CREATE SCHEMA $DBSCHEMA;"
+}
+
+# $1: parameter needs to be passed in containing the file name
+function dbfile {
 	FILE=$1
-	psql -d $DBNAME -U $USERNAME -h $DBHOST -p $PORT -a -w -f $FILE.sql
+	psql -h $DBHOST -p $PORT -d $DBNAME -U $USERNAME -E -q -w -f $FILE
 }
 
 # Export statements
 export DBHOST="localhost"
 export DBNAME="fiadb"
-export DBSCHEMA="fia"
+export DBSCHEMA="FIA"
 export USERNAME="postgres"
 export PORT=5432
 export PGPASSWORD="nasa"
@@ -47,6 +52,7 @@ TIDY=false
 TABLE_STRUCTURE_FILE="create_fia_tables.sql"
 COPY_STATEMENTS_FILE="copy_to_fia_db.sql"
 
+TEMP_DATA_DIR="fia2"
 
 # Creation Variables	
 while [ "$1" != "" ]; do
@@ -111,55 +117,56 @@ if [ "$CREATE_DB" == true ]; then
 	# Call create db function
 	dbcreate
 	
-	echo "[OPS] Downloading table structure..."
-	wget https://github.com/coatless/nasacms/blob/master/db_build/table_structure_sql.zip
+	echo "[OPS] Downloading the table structure..."
+	download https://github.com/coatless/nasacms/blob/master/db_build/table_structure_sql.zip
 	
-	echo "[OPS] Extracting table structure..."
-	# Extract the fia table structure sql files
-	7z e table_structure_sql.zip -o fia_sql
+	echo "[OPS] Extracting the table structure..."
+	# Extract the fia table structure sql files (-j removes folder structure)
+	unzip -j -q table_structure_sql.zip -d fia_sql
+	
+	echo "[OPS] Merging the table structure..."
+
 	# Merge files together
 	cat fia_sql/*.sql > $TABLE_STRUCTURE_FILE
 
+	echo "[SQL] Creating the table structure..."
+	dbfile $TABLE_STRUCTURE_FILE
 fi
 
 # Download and save data to current directory
 if [ "$DOWNLOAD_DATA" == true ]; then
 	echo "[OPS] Downloading Data..."
-	wget http://apps.fs.fed.us/fiadb-downloads/ENTIRE.zip
+	download http://apps.fs.fed.us/fiadb-downloads/ENTIRE.zip
+	
+	echo "[OPS] Extracting data..."
+	unzip -q ENTIRE.zip -d $TEMP_DATA_DIR
+	
+	echo "[DATA] Fixing Encoding Issue with POP_EVAL..."
+	# Fix the file encoding issue with POP_EVAL
+	sed -i "s/\x96/-/g" $TEMP_DATA_DIR/POP_EVAL.CSV
 fi
 
 # Import data into postgres
 if [ "$COPY_DATA" == true ]; then
-	echo "[OPS] Extracting data..."
-	7z e ENTIRE.zip -o fia
-	
-	echo "[DATA] Fixing Encoding Issue with POP_EVAL..."
-	# Fix the file encoding issue with POP_EVAL
-	sed -i "s/\x96/-/g" fia/POP_EVAL.CSV
 	
 	echo "[SQL] Creating copy sql..."
+	
+	echo "[SQL] Beginning copy process of CSVs into PostgresSQL DB... This may take a while..."
+
 	# Obtain each .csv extracted and build a copy statement.
-	for file in `find fia -name "*.csv"` 
+	for file in `find $TEMP_DATA_DIR -type f -iname "*.csv" -printf "%f\n"` 
 	do
-		table_name=${file%.csv}
-		echo "COPY $DBSCHEMA.$table_name FROM '$file.csv' DELIMITER ',' CSV HEADER;" >> $COPY_STATEMENTS_FILE
+		table_name=${file%.CSV}
+		echo "[SQL] Copying $table_name into postgres..."
+		# The \ is to avoid permission issues. 
+		dbcommand "\COPY $DBSCHEMA.$table_name FROM '$TEMP_DATA_DIR/$file' DELIMITER ',' CSV HEADER;" 
 	done
 	
-	echo "[SQL] Copying data into PostGres..."
-	dbfile $COPY_STATEMENTS_FILE
-fi;
+fi
 
-if [ "$ERRORS" == false ]; then
-	echo "No errors! The sql script was successful"
-
-	if [ "$COPY_DATA" == true ]; then
-		echo "Cleaning up... Removing master sql query..."
-		rm -rf $TABLE_STRUCTURE_FILE
-		rm -rf $COPY_STATEMENTS_FILE
-	fi;
-
-else
-	echo "There were errors in the script! Not removing components."
-fi;
+if [ "$TIDY" == true ]; then
+	echo "Cleaning up... Removing master sql query..."
+	rm -rf $TABLE_STRUCTURE_FILE
+fi
 
 exit 0
