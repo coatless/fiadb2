@@ -17,14 +17,14 @@ function usage {
 
 # $1: parameter needs to be passed for command
 function dbcommand {
-	psql -h $DBHOST -p $PORT -d $DBNAME -U $USERNAME -w -E -q -c $1
+	psql -h $DBHOST -p $PORT -d $DBNAME -U $USERNAME -w -E -q -c "$1"
 }
 
 # Parameters are set using export
 function dbcreate {
 	# part of psql
 	createdb -h $DBHOST -p $PORT -U $USERNAME -E UTF8 -w $DBNAME
-	
+	echo "[SQL] Creating table Schema"
 	dbcommand "CREATE SCHEMA $DBSCHEMA;"
 }
 
@@ -63,7 +63,7 @@ while [ "$1" != "" ]; do
 	    -g | --getdata )
 			DOWNLOAD_DATA=true
 			;;
-	    -i | --getdata )
+	    -i | --copydata )
 			COPY_DATA=true
 			;;
 		-t | --tidy)
