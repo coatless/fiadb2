@@ -135,7 +135,7 @@ fi
 
 # Download and save data to current directory
 if [ "$DOWNLOAD_DATA" == true ]; then
-	echo "[OPS] Downloading Data..."
+	echo "[OPS] Downloading All FIA Data..."
 	download http://apps.fs.fed.us/fiadb-downloads/ENTIRE.zip
 	
 	echo "[OPS] Extracting data..."
@@ -144,6 +144,12 @@ if [ "$DOWNLOAD_DATA" == true ]; then
 	echo "[DATA] Fixing Encoding Issue with POP_EVAL..."
 	# Fix the file encoding issue with POP_EVAL
 	sed -i "s/\x96/-/g" $TEMP_DATA_DIR/POP_EVAL.CSV
+	
+	echo "[OPS] Downloading FIA REF Data..."
+	download http://apps.fs.fed.us/fiadb-downloads/FIADB_REFERENCE.ZIP
+	
+	echo "[OPS] Extracting FIA REF data..."
+	unzip -q FIADB_REFERENCE.zip -d $TEMP_DATA_DIR
 fi
 
 # Import data into postgres
