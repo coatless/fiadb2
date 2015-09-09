@@ -1,0 +1,11 @@
+Package: fiadb
+Type: Package
+Title: FIA DB within R
+Version: 0.0.1
+Date: 2015-05-27
+Author: JJB
+Maintainer: Bo Li <libo@illinois.edu>
+Description: Provides tools to build the FIA Database and query against it.
+License: MIT + file LICENSE
+Imports: Rcpp (>= 0.11.6), RPostgreSQL
+LinkingTo: Rcpp, RcppArmadillo
